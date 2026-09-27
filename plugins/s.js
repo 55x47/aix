@@ -1,11 +1,14 @@
+// ERFAN MD 
 import { fileURLToPath } from 'url';
 import { cmd } from '../command.js';
 import axios from 'axios';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const __filename = fileURLToPath(import.meta.url);
 const API_BASE = "https://xjawadtechyt.vercel.app";
 
-// Small caps font helper
 const toSmallCaps = (text) => {
     const map = {
         'a': 'ᴀ', 'b': 'ʙ', 'c': 'ᴄ', 'd': 'ᴅ', 'e': 'ᴇ', 'f': 'ғ', 'g': 'ɢ', 'h': 'ʜ', 'i': 'ɪ', 'j': 'ᴊ',
@@ -15,35 +18,55 @@ const toSmallCaps = (text) => {
     return text.split('').map(c => map[c.toLowerCase()] || c).join('');
 };
 
-// Helper to extract YouTube video ID
 function getVideoId(url) {
-    const match = url.match(/(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-    return match ? match[1] : null;
+    if (!url || typeof url !== 'string') return null;
+    const patterns = [
+        /(?:youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+        /(?:youtu\.be\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/,
+        /(?:m\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/,
+        /(?:youtube\.com\/watch\/)([a-zA-Z0-9_-]{11})/,
+        /(?:music\.youtube\.com\/watch\?.*v=)([a-zA-Z0-9_-]{11})/
+    ];
+    for (const pattern of patterns) {
+        const match = url.match(pattern);
+        if (match && match[1]) return match[1];
+    }
+    return null;
 }
 
 // ============================================
-// SHARED: Audio API list (A8 → A9 → A7 → A6 → A1 → A2 → A3 → A4 → A5)
+// AUDIO APIS
 // ============================================
 const getAudioAPIs = (url) => [
-    { url: `${API_BASE}/yta8?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta9?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta7?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta6?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta1?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta2?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta3?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta4?url=${encodeURIComponent(url)}`, timeout: 15000 },
-    { url: `${API_BASE}/yta5?url=${encodeURIComponent(url)}`, timeout: 15000 }
+    { url: `${API_BASE}/yta8?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta9?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta7?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta6?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta1?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta2?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta3?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta4?url=${encodeURIComponent(url)}`, timeout: 25000 },
+    { url: `${API_BASE}/yta5?url=${encodeURIComponent(url)}`, timeout: 25000 }
 ];
 
 // ============================================
-// SHARED: Video API list (V3 → V1 → V2)
+// NORMAL VIDEO APIS (return download.url → send as VIDEO)
+// Order: V3 → V1 → V2
 // ============================================
-const getVideoAPIs = (url) => [
+const getNormalVideoAPIs = (url) => [
     `${API_BASE}/ytv3?url=${encodeURIComponent(url)}`,
     `${API_BASE}/ytv1?url=${encodeURIComponent(url)}`,
     `${API_BASE}/ytv2?url=${encodeURIComponent(url)}`
 ];
+
+// ============================================
+// FALLBACK VIDEO API (returns download.urlx → save to disk + send as DOCUMENT)
+// ============================================
+const getFallbackVideoAPI = (url) => `${API_BASE}/ytdl?url=${encodeURIComponent(url)}`;
 
 // ============================================
 // COMMAND: play (Auto Audio)
@@ -70,8 +93,7 @@ cmd({
             }
             const videoId = getVideoId(text);
             if (!videoId) return reply("❌ Invalid YouTube URL!");
-            const searchFromUrl = await yts({ videoId: videoId });
-            vid = searchFromUrl;
+            vid = await yts({ videoId: videoId });
         } else {
             const search = await yts(text);
             if (!search || !search.videos || !search.videos.length) {
@@ -88,19 +110,18 @@ cmd({
             caption: `- *AUDIO DOWNLOADER 🎧*\n╭━━❐━⪼\n┇๏ *Title* - ${vid.title}\n┇๏ *Duration* - ${vid.timestamp}\n┇๏ *Views* - ${vid.views?.toLocaleString() || 'N/A'}\n┇๏ *Author* - ${vid.author?.name || 'Unknown'}\n┇๏ *Status* - Downloading...\n╰━━❑━⪼\n> Powered by DARKZONE-MD`
         }, { quoted: mek });
 
-        let audioUrl = null;
         let success = false;
-
         const audioAPIs = getAudioAPIs(url);
 
         for (const api of audioAPIs) {
-            if (!success) {
-                try {
-                    const response = await axios.get(api.url, { timeout: api.timeout });
-                    audioUrl = response.data?.status && response.data?.download?.url
-                        ? response.data.download.url
-                        : null;
-                    if (audioUrl) {
+            if (success) break;
+            try {
+                const response = await axios.get(api.url, { timeout: api.timeout });
+                const audioUrl = response.data?.status && response.data?.download?.url
+                    ? response.data.download.url
+                    : null;
+                if (audioUrl) {
+                    try {
                         await conn.sendMessage(from, {
                             audio: { url: audioUrl },
                             mimetype: "audio/mpeg",
@@ -109,18 +130,18 @@ cmd({
                         }, { quoted: mek });
                         success = true;
                         break;
+                    } catch (sendErr) {
+                        console.error(`⚠️ Audio send failed (${api.url}):`, sendErr.message);
+                        continue;
                     }
-                } catch (e) {
-                    console.error(`⚠️ API failed (${api.url}):`, e.message);
-                    continue;
                 }
+            } catch (e) {
+                console.error(`⚠️ API failed (${api.url}):`, e.message);
+                continue;
             }
         }
 
-        if (!success) {
-            return reply("❌ All download sources failed! Try again later.");
-        }
-
+        if (!success) return reply("❌ All download sources failed! Try again later.");
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (err) {
@@ -131,7 +152,7 @@ cmd({
 });
 
 // ============================================
-// COMMAND: video (Video Download)
+// COMMAND: video
 // ============================================
 cmd({
     pattern: "video",
@@ -141,6 +162,7 @@ cmd({
     react: "📹",
     filename: __filename
 }, async (conn, mek, m, { from, text, reply }) => {
+    let tempFile = null;
     try {
         if (!text) return reply("🎥 Please provide a video name or link!\n\nExample: `.video Alone Marshmello`");
 
@@ -155,8 +177,7 @@ cmd({
             }
             const videoId = getVideoId(text);
             if (!videoId) return reply("❌ Invalid YouTube URL!");
-            const searchFromUrl = await yts({ videoId: videoId });
-            vid = searchFromUrl;
+            vid = await yts({ videoId: videoId });
         } else {
             const search = await yts(text);
             if (!search || !search.videos || !search.videos.length) {
@@ -173,40 +194,89 @@ cmd({
             caption: `*🎬 VIDEO DOWNLOADER*\n\n🎞️ *Title:* ${vid.title}\n📺 *Channel:* ${vid.author?.name || 'Unknown'}\n🕒 *Duration:* ${vid.timestamp}\n\n*Status:* Downloading Video...\n\n> Powered by DARKZONE-MD`
         }, { quoted: mek });
 
-        let videoUrl = null;
         let success = false;
 
-        const videoAPIs = getVideoAPIs(url);
+        // ---- PHASE 1: Normal APIs (V3 → V1 → V2) ----
+        const normalVideoAPIs = getNormalVideoAPIs(url);
 
-        for (const apiUrl of videoAPIs) {
-            if (!success) {
-                try {
-                    const response = await axios.get(apiUrl);
-                    videoUrl = response.data?.status && response.data?.download?.url
-                        ? response.data.download.url
-                        : null;
-                    if (videoUrl) {
+        for (const apiUrl of normalVideoAPIs) {
+            if (success) break;
+            try {
+                const response = await axios.get(apiUrl, { timeout: 25000 });
+                const videoUrl = response.data?.status && response.data?.download?.url
+                    ? response.data.download.url
+                    : null;
+                if (videoUrl) {
+                    try {
                         await conn.sendMessage(from, {
                             video: { url: videoUrl },
                             caption: `🎬 *${vid.title}*\n\n> Powered by DARKZONE-MD`
                         }, { quoted: mek });
                         success = true;
                         break;
+                    } catch (sendErr) {
+                        console.error(`⚠️ Send failed (${apiUrl}):`, sendErr.message);
+                        continue;
                     }
-                } catch (e) {
-                    console.error(`⚠️ API failed (${apiUrl}):`, e.message);
-                    continue;
                 }
+            } catch (e) {
+                console.error(`⚠️ API failed (${apiUrl}):`, e.message);
+                continue;
             }
         }
 
+        // ---- PHASE 2: Fallback ytdl → save to disk + send as document ----
         if (!success) {
-            return reply("❌ All video sources failed! Try again later.");
+            try {
+                const fallbackUrl = getFallbackVideoAPI(url);
+                const response = await axios.get(fallbackUrl, { timeout: 25000 });
+
+                if (response.data?.status && response.data?.download?.urlx) {
+                    const downloadURL = response.data.download.urlx;
+                    const title = response.data.download.title || vid.title;
+
+                    tempFile = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
+
+                    const fileRes = await axios({
+                        method: 'GET',
+                        url: downloadURL,
+                        responseType: 'stream'
+                    });
+
+                    const writer = fs.createWriteStream(tempFile);
+                    fileRes.data.pipe(writer);
+
+                    await new Promise((resolve, reject) => {
+                        writer.on('finish', resolve);
+                        writer.on('error', reject);
+                    });
+
+                    await conn.sendMessage(from, {
+                        document: { url: tempFile },
+                        mimetype: "video/mp4",
+                        fileName: `${title}.mp4`,
+                        caption: `🍿 *${title}*\n\n> Powered by DARKZONE-MD`
+                    }, { quoted: mek });
+
+                    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                    if (global.gc) global.gc();
+                    tempFile = null;
+                    success = true;
+                }
+            } catch (e) {
+                try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                if (global.gc) global.gc();
+                tempFile = null;
+                console.error(`⚠️ ytdl fallback failed:`, e.message);
+            }
         }
 
+        if (!success) return reply("❌ All video sources failed! Try again later.");
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
+        try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+        if (global.gc) global.gc();
         console.error("Error in .video command:", e);
         reply("❌ Error occurred, please try again later!");
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
@@ -288,19 +358,18 @@ cmd({
                     const asDocument = cleanSelect === "3" || cleanSelect === "4";
 
                     if (type === "mp3") {
-                        let audioUrl = null;
                         let success = false;
-
                         const audioAPIs = getAudioAPIs(vid.url);
 
                         for (const api of audioAPIs) {
-                            if (!success) {
-                                try {
-                                    const response = await axios.get(api.url, { timeout: api.timeout });
-                                    audioUrl = response.data?.status && response.data?.download?.url
-                                        ? response.data.download.url
-                                        : null;
-                                    if (audioUrl) {
+                            if (success) break;
+                            try {
+                                const response = await axios.get(api.url, { timeout: api.timeout });
+                                const audioUrl = response.data?.status && response.data?.download?.url
+                                    ? response.data.download.url
+                                    : null;
+                                if (audioUrl) {
+                                    try {
                                         if (asDocument) {
                                             await conn.sendMessage(from, {
                                                 document: { url: audioUrl },
@@ -318,11 +387,14 @@ cmd({
                                         }
                                         success = true;
                                         break;
+                                    } catch (sendErr) {
+                                        console.error(`⚠️ Audio send failed (${api.url}):`, sendErr.message);
+                                        continue;
                                     }
-                                } catch (e) {
-                                    console.error(`⚠️ API failed (${api.url}):`, e.message);
-                                    continue;
                                 }
+                            } catch (e) {
+                                console.error(`⚠️ API failed (${api.url}):`, e.message);
+                                continue;
                             }
                         }
 
@@ -333,19 +405,21 @@ cmd({
                         }
 
                     } else {
-                        let videoUrl = null;
+                        let tempFile = null;
                         let success = false;
 
-                        const videoAPIs = getVideoAPIs(vid.url);
+                        // ---- PHASE 1: Normal APIs ----
+                        const normalVideoAPIs = getNormalVideoAPIs(vid.url);
 
-                        for (const apiUrl of videoAPIs) {
-                            if (!success) {
-                                try {
-                                    const response = await axios.get(apiUrl);
-                                    videoUrl = response.data?.status && response.data?.download?.url
-                                        ? response.data.download.url
-                                        : null;
-                                    if (videoUrl) {
+                        for (const apiUrl of normalVideoAPIs) {
+                            if (success) break;
+                            try {
+                                const response = await axios.get(apiUrl, { timeout: 25000 });
+                                const videoUrl = response.data?.status && response.data?.download?.url
+                                    ? response.data.download.url
+                                    : null;
+                                if (videoUrl) {
+                                    try {
                                         if (asDocument) {
                                             await conn.sendMessage(from, {
                                                 document: { url: videoUrl },
@@ -361,11 +435,60 @@ cmd({
                                         }
                                         success = true;
                                         break;
+                                    } catch (sendErr) {
+                                        console.error(`⚠️ Video send failed (${apiUrl}):`, sendErr.message);
+                                        continue;
                                     }
-                                } catch (e) {
-                                    console.error(`⚠️ API failed (${apiUrl}):`, e.message);
-                                    continue;
                                 }
+                            } catch (e) {
+                                console.error(`⚠️ API failed (${apiUrl}):`, e.message);
+                                continue;
+                            }
+                        }
+
+                        // ---- PHASE 2: ytdl fallback ----
+                        if (!success) {
+                            try {
+                                const fallbackUrl = getFallbackVideoAPI(vid.url);
+                                const response = await axios.get(fallbackUrl, { timeout: 25000 });
+
+                                if (response.data?.status && response.data?.download?.urlx) {
+                                    const downloadURL = response.data.download.urlx;
+                                    const title = response.data.download.title || vid.title;
+
+                                    tempFile = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
+
+                                    const fileRes = await axios({
+                                        method: 'GET',
+                                        url: downloadURL,
+                                        responseType: 'stream'
+                                    });
+
+                                    const writer = fs.createWriteStream(tempFile);
+                                    fileRes.data.pipe(writer);
+
+                                    await new Promise((resolve, reject) => {
+                                        writer.on('finish', resolve);
+                                        writer.on('error', reject);
+                                    });
+
+                                    await conn.sendMessage(from, {
+                                        document: { url: tempFile },
+                                        mimetype: "video/mp4",
+                                        fileName: `${title}.mp4`,
+                                        caption: `🍿 *${title}*\n\n> Powered by DARKZONE-MD`
+                                    }, { quoted: received });
+
+                                    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                                    if (global.gc) global.gc();
+                                    tempFile = null;
+                                    success = true;
+                                }
+                            } catch (e) {
+                                try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                                if (global.gc) global.gc();
+                                tempFile = null;
+                                console.error(`⚠️ ytdl fallback failed:`, e.message);
                             }
                         }
 
@@ -386,10 +509,7 @@ cmd({
         };
         
         conn.ev.on("messages.upsert", songListener);
-        
-        setTimeout(() => {
-            conn.ev.off("messages.upsert", songListener);
-        }, 30000);
+        setTimeout(() => { conn.ev.off("messages.upsert", songListener); }, 30000);
 
     } catch (e) {
         console.error(e);
@@ -403,7 +523,7 @@ cmd({
 // ============================================
 cmd({
     pattern: "drama",
-    alias: ["movie", "film", "series"],
+    alias: ["film", "series"],
     desc: "Download YouTube drama/movie video (interactive)",
     category: "download",
     react: "🎬",
@@ -469,25 +589,27 @@ cmd({
                 if (cleanSelect === "1" || cleanSelect === "2") {
                     const asDocument = cleanSelect === "2";
 
-                    let videoUrl = null;
+                    let tempFile = null;
                     let success = false;
 
-                    const videoAPIs = getVideoAPIs(vid.url);
+                    // ---- PHASE 1: Normal APIs ----
+                    const normalVideoAPIs = getNormalVideoAPIs(vid.url);
 
-                    for (const apiUrl of videoAPIs) {
-                        if (!success) {
-                            try {
-                                const response = await axios.get(apiUrl);
-                                videoUrl = response.data?.status && response.data?.download?.url
-                                    ? response.data.download.url
-                                    : null;
-                                if (videoUrl) {
+                    for (const apiUrl of normalVideoAPIs) {
+                        if (success) break;
+                        try {
+                            const response = await axios.get(apiUrl, { timeout: 25000 });
+                            const videoUrl = response.data?.status && response.data?.download?.url
+                                ? response.data.download.url
+                                : null;
+                            if (videoUrl) {
+                                try {
                                     if (asDocument) {
                                         await conn.sendMessage(from, {
                                             document: { url: videoUrl },
                                             mimetype: "video/mp4",
                                             fileName: `${vid.title}.mp4`,
-                                            caption: `📄 *${vid.title}*\n📹 Video Document\n\n> Powered by DS DARKZONE-MD`
+                                            caption: `📄 *${vid.title}*\n📹 Video Document\n\n> Powered by DARKZONE-MD`
                                         }, { quoted: received });
                                     } else {
                                         await conn.sendMessage(from, {
@@ -497,11 +619,60 @@ cmd({
                                     }
                                     success = true;
                                     break;
+                                } catch (sendErr) {
+                                    console.error(`⚠️ Video send failed (${apiUrl}):`, sendErr.message);
+                                    continue;
                                 }
-                            } catch (e) {
-                                console.error(`⚠️ API failed (${apiUrl}):`, e.message);
-                                continue;
                             }
+                        } catch (e) {
+                            console.error(`⚠️ API failed (${apiUrl}):`, e.message);
+                            continue;
+                        }
+                    }
+
+                    // ---- PHASE 2: ytdl fallback ----
+                    if (!success) {
+                        try {
+                            const fallbackUrl = getFallbackVideoAPI(vid.url);
+                            const response = await axios.get(fallbackUrl, { timeout: 25000 });
+
+                            if (response.data?.status && response.data?.download?.urlx) {
+                                const downloadURL = response.data.download.urlx;
+                                const title = response.data.download.title || vid.title;
+
+                                tempFile = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
+
+                                const fileRes = await axios({
+                                    method: 'GET',
+                                    url: downloadURL,
+                                    responseType: 'stream'
+                                });
+
+                                const writer = fs.createWriteStream(tempFile);
+                                fileRes.data.pipe(writer);
+
+                                await new Promise((resolve, reject) => {
+                                    writer.on('finish', resolve);
+                                    writer.on('error', reject);
+                                });
+
+                                await conn.sendMessage(from, {
+                                    document: { url: tempFile },
+                                    mimetype: "video/mp4",
+                                    fileName: `${title}.mp4`,
+                                    caption: `🍿 *${title}*\n\n> Powered by DARKZONE-MD`
+                                }, { quoted: received });
+
+                                try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                                if (global.gc) global.gc();
+                                tempFile = null;
+                                success = true;
+                            }
+                        } catch (e) {
+                            try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                            if (global.gc) global.gc();
+                            tempFile = null;
+                            console.error(`⚠️ ytdl fallback failed:`, e.message);
                         }
                     }
 
@@ -521,15 +692,237 @@ cmd({
         };
         
         conn.ev.on("messages.upsert", dramaListener);
-        
-        setTimeout(() => {
-            conn.ev.off("messages.upsert", dramaListener);
-        }, 30000);
+        setTimeout(() => { conn.ev.off("messages.upsert", dramaListener); }, 30000);
 
     } catch (e) {
         console.error(e);
         reply(`❌ Error: ${e.message}`);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+    }
+});
+
+// ============================================
+// COMMAND: cartoon
+// ============================================
+cmd({
+    pattern: "cartoon",
+    alias: ["toon", "kids"],
+    desc: "Download YouTube cartoon video",
+    category: "download",
+    react: "🧸",
+    filename: __filename
+}, async (conn, mek, m, { from, text, reply }) => {
+    let tempFile = null;
+    try {
+        if (!text) return reply("🧸 Please provide a cartoon name!\n\nExample: `.cartoon Tom and Jerry`");
+
+        const { default: yts } = await import('yt-search');
+        
+        let url = text;
+        let vid = null;
+
+        if (text.startsWith('http://') || text.startsWith('https://')) {
+            if (!text.includes("youtube.com") && !text.includes("youtu.be")) {
+                return reply("❌ Please provide a valid YouTube URL!");
+            }
+            const videoId = getVideoId(text);
+            if (!videoId) return reply("❌ Invalid YouTube URL!");
+            vid = await yts({ videoId: videoId });
+        } else {
+            const search = await yts(`${text} cartoon`);
+            if (!search || !search.videos || !search.videos.length) {
+                return reply("❌ No cartoon results found!");
+            }
+            vid = search.videos[0];
+            url = vid.url;
+        }
+
+        if (!vid) return reply("❌ No results found!");
+
+        await conn.sendMessage(from, {
+            image: { url: vid.thumbnail },
+            caption: `*🧸 CARTOON DOWNLOADER*\n\n🎞️ *Title:* ${vid.title}\n📺 *Channel:* ${vid.author?.name || 'Unknown'}\n🕒 *Duration:* ${vid.timestamp}\n\n*Status:* Downloading Cartoon...\n\n> Powered by DARKZONE-MD`
+        }, { quoted: mek });
+
+        let success = false;
+
+        // ---- PHASE 1: Normal APIs ----
+        const normalVideoAPIs = getNormalVideoAPIs(url);
+
+        for (const apiUrl of normalVideoAPIs) {
+            if (success) break;
+            try {
+                const response = await axios.get(apiUrl, { timeout: 25000 });
+                const videoUrl = response.data?.status && response.data?.download?.url
+                    ? response.data.download.url
+                    : null;
+                if (videoUrl) {
+                    try {
+                        await conn.sendMessage(from, {
+                            video: { url: videoUrl },
+                            caption: `🧸 *${vid.title}*\n\n> Powered by DARKZONE-MD`
+                        }, { quoted: mek });
+                        success = true;
+                        break;
+                    } catch (sendErr) {
+                        console.error(`⚠️ Send failed (${apiUrl}):`, sendErr.message);
+                        continue;
+                    }
+                }
+            } catch (e) {
+                console.error(`⚠️ API failed (${apiUrl}):`, e.message);
+                continue;
+            }
+        }
+
+        // ---- PHASE 2: ytdl fallback ----
+        if (!success) {
+            try {
+                const fallbackUrl = getFallbackVideoAPI(url);
+                const response = await axios.get(fallbackUrl, { timeout: 25000 });
+
+                if (response.data?.status && response.data?.download?.urlx) {
+                    const downloadURL = response.data.download.urlx;
+                    const title = response.data.download.title || vid.title;
+
+                    tempFile = path.join(os.tmpdir(), `video_${Date.now()}.mp4`);
+
+                    const fileRes = await axios({
+                        method: 'GET',
+                        url: downloadURL,
+                        responseType: 'stream'
+                    });
+
+                    const writer = fs.createWriteStream(tempFile);
+                    fileRes.data.pipe(writer);
+
+                    await new Promise((resolve, reject) => {
+                        writer.on('finish', resolve);
+                        writer.on('error', reject);
+                    });
+
+                    await conn.sendMessage(from, {
+                        document: { url: tempFile },
+                        mimetype: "video/mp4",
+                        fileName: `${title}.mp4`,
+                        caption: `🍿 *${title}*\n\n> Powered by DARKZONE-MD`
+                    }, { quoted: mek });
+
+                    try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                    if (global.gc) global.gc();
+                    tempFile = null;
+                    success = true;
+                }
+            } catch (e) {
+                try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+                if (global.gc) global.gc();
+                tempFile = null;
+                console.error(`⚠️ ytdl fallback failed:`, e.message);
+            }
+        }
+
+        if (!success) return reply("❌ All video sources failed! Try again later.");
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+
+    } catch (e) {
+        try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+        if (global.gc) global.gc();
+        console.error("Error in .cartoon command:", e);
+        reply("❌ Error occurred, please try again later!");
+        await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+    }
+});
+
+// ============================================
+// COMMAND: movie (uses ytdl urlx only)
+// ============================================
+cmd({
+    pattern: "movie",
+    alias: ["playmovie", "dlmovie"],
+    desc: "Fast auto search with DP info and download full movie as document safely",
+    category: "download",
+    react: "🍿",
+    filename: __filename
+}, async (conn, mek, m, { from, text, reply }) => {
+    let tempFile = null;
+    try {
+        if (!text) {
+            return reply("❌ *Please provide a movie name!*\n\nExample: `.movie DJ Ganesh Chaturthi`");
+        }
+
+        if (text.startsWith('http://') || text.startsWith('https://')) {
+            return reply("❌ URLs are not supported here.\nPlease send a movie *name* only.");
+        }
+
+        await conn.sendMessage(from, {
+            react: { text: "⚡", key: mek.key }
+        });
+
+        const { default: yts } = await import('yt-search');
+
+        const search = await yts(`${text} full movie`);
+        if (!search || !search.videos || !search.videos.length) {
+            return reply("❌ No results found!");
+        }
+
+        const vid = search.videos[0];
+
+        await conn.sendMessage(from, {
+            image: { url: vid.thumbnail },
+            caption: `*╭┈───〔 ${toSmallCaps('Movie Downloader')} 〕┈───⊷*
+*├▢ 🍿 Title:* ${vid.title}
+*├▢ 📺 Channel:* ${vid.author?.name || 'Unknown'}
+*├▢ ⏰ Duration:* ${vid.timestamp}
+*├▢ 👀 Views:* ${vid.views?.toLocaleString() || 'N/A'}
+*╰───────────────────⊷*
+_⚡ Downloading as document..._
+
+> Powered by DARKZONE-MD`
+        }, { quoted: mek });
+
+        const apiUrl = `${API_BASE}/ytdl?url=${encodeURIComponent(vid.url)}`;
+        const response = await axios.get(apiUrl, { timeout: 25000 });
+
+        if (!response.data?.status || !response.data?.download?.urlx) {
+            return reply("❌ Failed to get movie! Try again later.");
+        }
+
+        const downloadURL = response.data.download.urlx;
+        const title = response.data.download.title || vid.title;
+
+        tempFile = path.join(os.tmpdir(), `movie_${Date.now()}.mp4`);
+
+        const fileRes = await axios({
+            method: 'GET',
+            url: downloadURL,
+            responseType: 'stream'
+        });
+
+        const writer = fs.createWriteStream(tempFile);
+        fileRes.data.pipe(writer);
+
+        await new Promise((resolve, reject) => {
+            writer.on('finish', resolve);
+            writer.on('error', reject);
+        });
+
+        await conn.sendMessage(from, {
+            document: { url: tempFile },
+            mimetype: "video/mp4",
+            fileName: `${title}.mp4`,
+            caption: `🍿 *${title}*\n\n> Powered by DARKZONE-MD`
+        }, { quoted: mek });
+
+        try { if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+        if (global.gc) global.gc();
+
+        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
+
+    } catch (e) {
+        try { if (tempFile && fs.existsSync(tempFile)) fs.unlinkSync(tempFile); } catch {}
+        if (global.gc) global.gc();
+        await reply("❌ Error: " + (e?.message || e));
+        await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
     }
 });
 
@@ -573,7 +966,7 @@ async (conn, mek, m, { from, text, reply }) => {
             mesaj += `*╰───────────────────⊷*\n\n`;
         });
 
-        mesaj += `*╭───⬡ ${toSmallCaps('Powered By')} ⬡───*\n`;
+        mesaj += `*╭───⬡ ${toSmallCaps('Powered By')} ⬡ ───*\n`;
         mesaj += `*┋ ⬡ ${toSmallCaps('DARKZONE-MD')}*\n`;
         mesaj += `*╰───────────────────⊷*`;
         
